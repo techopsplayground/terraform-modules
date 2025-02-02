@@ -1,32 +1,35 @@
 resource "aws_instance" "ec2_instance" {
   ami                    = var.ami
   instance_type          = var.instance_type
+  subnet_id              = var.subnet_id
+  vpc_security_group_ids = var.vpc_security_group_ids
   key_name               = var.key_name
-  associate_public_ip_address = true  # Ensures public access
-  security_groups        = [aws_security_group.ec2_sg.name]
+  iam_instance_profile   = var.iam_instance_profile
+  availability_zone      = var.availability_zone
 
-  user_data = var.user_data
+  tags = merge(
+    var.common_tags,
+    tomap({ "Name" = var.instance_name })
+  )
 
-  tags = {
-    Name = var.instance_name
-  }
-}
-
-resource "aws_security_group" "ec2_sg" {
-  name        = "ec2_security_group"
-  description = "Allow SSH access"
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = [var.my_ip]  # Restrict SSH to your IP
+  connection {
+    type        = "ssh"
+    user        = var.ssh_user
+    private_key = file(var.key_path)
+    host        = self.public_ip
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  provisioner "file" {
+    source      = var.setup_script
+    destination = "/tmp/setup_script.sh"
   }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /tmp/setup_script.sh",
+      "bash /tmp/setup_script.sh"
+    ]
+  }
+
+  depends_on = var.depends_on
 }
